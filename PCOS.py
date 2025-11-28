@@ -1,100 +1,80 @@
 import streamlit as st
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+import joblib
 
-# Streamlit UI untuk mengupload file CSV atau Excel
-st.title('Klasifikasi Penyakit PCOS Menggunakan Algoritma Random Forest')
+# Load model
+def load_model(model_path):
+    return joblib.load(model_path)
 
-# Upload file CSV atau Excel
-uploaded_file = st.file_uploader("Upload file CSV atau Excel", type=["csv", "xlsx"])
+# Model
+model_paths = {
+    "Model Original": "models/model1.pkl",
+    "Model dengan Feature Selection": "models/model2.pkl",
+    "Model dengan SMOTE": "models/model3.pkl",
+    "Model dengan SMOTE + Feature Selection": "models/model4.pkl",
+    "Model dengan Outlier Removal": "models/model5.pkl",
+    "Model dengan Outlier Removal + Feature Selection": "models/model6.pkl",
+    "Model dengan Outlier + SMOTE": "models/model7.pkl",
+    "Model dengan Outlier + SMOTE + Feature Selection": "models/model8.pkl",
+}
 
-if uploaded_file is not None:
-    try:
-        # Membaca file CSV dengan pemisah titik koma
-        df = pd.read_csv(uploaded_file, sep=';')
+# Judul
+st.title("PCOS Classification App")
 
-        # Menampilkan data yang diupload
-        st.write("Data yang diupload:")
-        st.write(df.head())
+uploaded_file = st.file_uploader("Upload CSV/Excel file", type=["csv", "xlsx"])
+if uploaded_file:
+    if uploaded_file.name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file, delimiter=';')
+    else:
+        df = pd.read_excel(uploaded_file)
 
-        # Cek apakah kolom target 'PCOS (Y/N)' ada
-        if 'PCOS (Y/N)' not in df.columns:
-            st.error("File tidak mengandung kolom 'PCOS (Y/N)'. Harap pastikan nama kolom target sesuai.")
-            st.stop()
+    st.write("Data yang diunggah:")
+    st.dataframe(df.head())
 
-        # Memisahkan fitur dan target
-        X = df.drop(['PCOS (Y/N)', 'Patient File No.'], axis=1, errors='ignore')  # Menghapus kolom yang tidak diperlukan
-        y = df['PCOS (Y/N)']
+# Pilih model yang akan digunakan
+selected_model = st.selectbox("Pilih Model", list(model_paths.keys()))
 
-        # Split data menjadi data pelatihan dan pengujian
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
+# Load model yang dipilih
+model_path = model_paths[selected_model]
+model = load_model(model_path)
+feature_names = model.feature_names_in_
 
-        # Membuat dan melatih model
-        model = RandomForestClassifier()
-        model.fit(X_train, y_train)
+# Input data manual
+st.subheader("Input Data Manual")
+manual_input = {}
 
-        # Evaluasi model
-        y_pred = model.predict(X_test)
-        accuracy = accuracy_score(y_test, y_pred)
+# List kolom yang menggunakan selectbox
+binary_columns = [
+    'Pregnant(Y/N)', 'Weight gain(Y/N)', 'hair growth(Y/N)', 
+    'Skin darkening (Y/N)', 'Hair loss(Y/N)', 
+    'Pimples(Y/N)', 'Fast food (Y/N)', 'Reg.Exercise(Y/N)'
+]
 
-        # Menampilkan akurasi model
-        st.write(f"Akurasi model: {accuracy * 100:.2f}%")
+# Loop untuk membuat input sesuai jenis kolom
+for feature in feature_names:
+    if feature in binary_columns:
+        value = st.selectbox(f"Masukkan nilai {feature}", options=["No", "Yes"])
+        # Konversi nilai menjadi numerik
+        manual_input[feature] = 1 if value == "Yes" else 0
+    else:
+        # Input numerik untuk kolom lainnya
+        manual_input[feature] = st.number_input(f"Masukkan nilai {feature}", value=0.0)
 
-        # Input data pengguna
-        st.header('Masukkan Data Pasien untuk Prediksi')
+# Fungsi untuk melakukan prediksi
+def predict(input_data, model):
+    # Pastikan input_data memiliki nama kolom yang sesuai dengan model
+    input_data = pd.DataFrame([input_data])
+    input_data.columns = feature_names
+    prediction = model.predict(input_data)
+    prediction_proba = model.predict_proba(input_data)
+    return prediction[0], prediction_proba[0][1]
 
-        # Input sesuai kolom yang ada di dataset
-        age = st.text_input("Age (yrs)")
-        weight = st.text_input("Weight (Kg)")
-        height = st.text_input("Height (Cm)")
-        bmi = st.number_input("BMI", min_value=10.0, max_value=50.0, value=25.0, step=0.1)
-        blood_group = st.selectbox("Blood Group", ["A", "B", "AB", "O"])
-        pulse_rate = st.text_input("Pulse rate (bpm)")
-        rr = st.text_input("RR (breaths/min)")
-        hb = st.number_input("Hb (g/dl)", min_value=5.0, max_value=20.0, value=12.0, step=0.1)
-        cycle = st.selectbox("Cycle (R/I)", ["Regular", "Irregular"])
-        cycle_length = st.slider("Cycle length (days)", 20, 35, 28)
-        marriage_status = st.slider("Marriage Status (Yrs)", 0, 50, 5)
-        pregnant = st.selectbox("Pregnant (Y/N)", ["No", "Yes"])
-        no_of_abortions = st.slider("No. of abortions", 0, 10, 0)
-        hip = st.slider("Hip (inch)", 30, 50, 36)
-        waist = st.slider("Waist (inch)", 20, 50, 28)
-        waist_hip_ratio = st.number_input("Waist:Hip Ratio", min_value=0.5, max_value=1.5, value=0.75)
 
-        # Buat DataFrame untuk prediksi dengan nama kolom yang sesuai
-        input_data = {
-            'Age (yrs)': [age],
-            'Weight (Kg)': [weight],
-            'Height (Cm)': [height],
-            'BMI': [bmi],
-            'Blood Group': [blood_group],
-            'Pulse rate(bpm)': [pulse_rate],
-            'RR (breaths/min)': [rr],
-            'Hb(g/dl)': [hb],
-            'Cycle(R/I)': [cycle],
-            'Cycle length(days)': [cycle_length],
-            'Marraige Status (Yrs)': [marriage_status],
-            'Pregnant(Y/N)': [pregnant],
-            'No. of abortions': [no_of_abortions],
-            'Hip(inch)': [hip],
-            'Waist(inch)': [waist],
-            'Waist:Hip Ratio': [waist_hip_ratio]
-        }
+if st.button("Diagnosa"):
+    diagnosis, probability = predict(manual_input, model)
+    accuracy = probability if diagnosis == 1 else (1 - probability)
 
-        # Pastikan input_df memiliki kolom yang sama dengan dataset pelatihan
-        input_df = pd.DataFrame(input_data)
-        input_df = input_df.reindex(columns=X.columns, fill_value=0)
-
-        # Prediksi hasil
-        prediction = model.predict(input_df)
-
-        # Tampilkan hasil prediksi
-        if prediction[0] == 1:
-            st.write("**Diagnosis**: Anda berisiko terkena PCOS.")
-        else:
-            st.write("**Diagnosis**: Anda tidak terdeteksi PCOS.")
-
-    except Exception as e:
-        st.error(f"Terjadi kesalahan: {e}")
+    st.success(f"Hasil Diagnosis: {'Positive' if diagnosis == 1 else 'Negative'}")
+    st.write(f"Akurasi Berdasarkan Input: {accuracy * 100:.2f}%")
+    # st.write(f"Probabilitas Diagnosis Positif: {probability * 100:.2f}%")
+   
